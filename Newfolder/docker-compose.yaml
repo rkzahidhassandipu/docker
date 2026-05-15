@@ -1,0 +1,100 @@
+services:
+  ph-db:
+    image: postgres:16-alpine
+    container_name: ph-db
+    networks:
+      - ph-net
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=ph_health
+    ports:
+      - "5432:5432"
+    volumes:
+      - ph-pg-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ph_health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ph-server:
+    container_name: ph-server
+
+    build:
+      context: ./L2B6-Backend-PH-Healthcare-Management-System
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
+    depends_on:
+      ph-db:
+        condition: service_healthy
+
+    networks:
+      - ph-net
+
+    env_file:
+      - ./L2B6-Backend-PH-Healthcare-Management-System/.env
+
+    environment:
+      - CHOKIDAR_USEPOLLING=1
+      - CHOKIDAR_INTERVAL=300
+
+    ports:
+      - "5000:5000"
+
+    working_dir: /app
+
+    volumes:
+      - ./L2B6-Backend-PH-Healthcare-Management-System:/app
+      - server-node-modules:/app/node_modules
+      - server-logs:/app/logs
+
+    command: sh -c "pnpm install && npx prisma generate && npx prisma migrate deploy && pnpm dev"
+
+  ph-client:
+    container_name: ph-client
+
+    build:
+      context: ./L2B6-Frontend-PH-Healthcare-Management-System
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
+    depends_on:
+      - ph-server
+
+    networks:
+      - ph-net
+
+    env_file:
+      - ./L2B6-Frontend-PH-Healthcare-Management-System/.env
+
+    environment:
+      - CHOKIDAR_USEPOLLING=1
+      - CHOKIDAR_INTERVAL=300
+      - WATCHPACK_POLLING=true
+
+    ports:
+      - "3000:3000"
+
+    working_dir: /app
+
+    volumes:
+      - ./L2B6-Frontend-PH-Healthcare-Management-System:/app
+      - client-node-modules:/app/node_modules
+
+    command: sh -c "pnpm install && pnpm dev --host 0.0.0.0"
+
+networks:
+  ph-net:
+    driver: bridge
+
+volumes:
+  ph-pg-data:
+  server-node-modules:
+  server-logs:
+  client-node-modules:
